@@ -19,9 +19,23 @@ const copyDir = async (src, dst) => {
   try {
     await fs.promises.stat(src);
 
-    await fs.promises.mkdir(dst, { recursive: true });
-
+    try {
+      await fs.promises.access(dst, fs.constants.F_OK);
+    } catch (err) {
+      if (err.code === 'ENOENT') {
+        await fs.promises.mkdir(dst, { recursive: true });
+      } else {
+        throw err;
+      }
+    }
     const files = await fs.promises.readdir(src);
+
+    const srcFiles = new Set(files);
+    const dstFiles = await fs.promises.readdir(dst);
+    const deletePromises = dstFiles
+      .filter((file) => !srcFiles.has(file))
+      .map((file) => fs.promises.unlink(path.join(dst, file)));
+    await Promise.all(deletePromises);
 
     const copyPromises = files.map((file) => {
       const srcPath = path.join(src, file);
@@ -41,12 +55,6 @@ const copyDir = async (src, dst) => {
 (async () => {
   try {
     await fs.promises.access(src, fs.constants.F_OK);
-    try {
-      await fs.promises.access(dst, fs.constants.F_OK);
-      await fs.promises.rm(dst, { recursive: true });
-    } catch (err) {
-      if (err.code !== 'ENOENT') throw err;
-    }
     await copyDir(src, dst);
   } catch (err) {
     console.error(err.message);
